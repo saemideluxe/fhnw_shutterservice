@@ -8,7 +8,6 @@ import commands
 import knx
 
 
-worker_thread = None
 app = flask.Flask(__name__)
 flask_cors.CORS(app)
 
@@ -86,7 +85,7 @@ def log():
     else:
         n = flask.request.args.get("n", "20")
         n = int(n) if n.isdigit() else 20
-        return flask.jsonify(**knx.nice_log_format(knx.log[:-n]))
+        return flask.jsonify(**knx.nice_log_format(knx.log[-n:]))
 
 
 if __name__ == "__main__":

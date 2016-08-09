@@ -10,12 +10,12 @@ import time
 
 
 def _shutdown():
-    knw_command_thread.stop.set()
-    knw_command_thread.join()
+    knx_command_thread.stop.set()
+    time.sleep(2)
+    knx_command_thread.connection.disconnect()
     print("shutdown")
     _log_dump(len(log))
     print("write log dump (%d entries)" % len(log))
-
 
 
 # addr must be sequence of 3 int
@@ -58,7 +58,7 @@ class KNXCommandWorker(threading.Thread):
         self.command_queue = cmd_queue
         self.connected = self.connection.connect()
         
-    def run():
+    def run(self):
         while not self.stop.is_set():
             now = datetime.datetime.now()
             if not self.command_queue.empty() and self.command_queue.queue[0][0] <= now:
@@ -67,7 +67,7 @@ class KNXCommandWorker(threading.Thread):
             time.sleep(0.2)
         self.connection.disconnect()
 
-    def notify(addr, data):
+    def notify(self, addr, data):
         now = datetime.datetime.now()
         self.log.append((now, _bin_to_logical_addr(addr), [int(i) for i in data]))
         if (self.log[-1][0] - self.log[0][0]).total_seconds() / 3600 >= 24:
@@ -89,3 +89,6 @@ time.sleep(2)
 if not knx_command_thread.connected:
     print("could not connect to knx router at %s" % router_ip)
     sys.exit(1) 
+else:
+    print("connected to knx router at %s" % router_ip)
+
