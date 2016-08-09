@@ -10,12 +10,11 @@ import time
 
 
 def _shutdown():
-    knx_command_thread.stop.set()
-    time.sleep(2)
-    knx_command_thread.connection.disconnect()
+    connection.disconnect()
     print("shutdown")
-    _log_dump(len(log))
-    print("write log dump (%d entries)" % len(log))
+    log_len = len(log)
+    _log_dump(log_len)
+    print("write log dump (%d entries)" % log_len)
 
 
 # addr must be sequence of 3 int
@@ -35,7 +34,7 @@ def _bin_to_logical_addr(bin_val):
 
 def _log_dump(nitems):
     to_dump = log[:nitems]
-    with open(logdir + "/" + datetime.datetime.now().strftime("%YY%m%d_%H%M%s.json"), "w") as f:
+    with open(logdir + "/" + datetime.datetime.now().strftime("%YY%m%d_%H%M%S.json"), "w") as f:
         f.write(json.dumps(nice_log_format(to_dump)))
     del log[:nitems]
 
@@ -49,23 +48,20 @@ def queue_command(execution_time, knx_address, data):
 
 
 class KNXCommandWorker(threading.Thread):
-    def __init__(self, router_ip, log, cmd_queue):
-        threading.Thread.__init__(self)
-        self.stop = threading.Event()
-        self.connection = knxip.ip.KNXIPTunnel(router_ip)
+    def __init__(self, connection, log, cmd_queue):
+        threading.Thread.__init__(self, daemon=True)
+        self.connection = connection
         self.connection.notify = self.notify
         self.log = log
         self.command_queue = cmd_queue
-        self.connected = self.connection.connect()
         
     def run(self):
-        while not self.stop.is_set():
+        while True:
             now = datetime.datetime.now()
-            if not self.command_queue.empty() and self.command_queue.queue[0][0] <= now:
+            if not self.command_queue.empty() and self.command_queue.queue[0][0] <= now and self.connection.connected:
                 next_cmd = self.command_queue.get()
                 self.connection.group_write(_logical_addr_to_bin(next_cmd[1]), next_cmd[2])
             time.sleep(0.2)
-        self.connection.disconnect()
 
     def notify(self, addr, data):
         now = datetime.datetime.now()
@@ -76,19 +72,14 @@ class KNXCommandWorker(threading.Thread):
 
 
 logdir = "./logs/"
+router_ip = "10.20.1.11"
 log = []
 command_queue = queue.PriorityQueue()
-router_ip = "10.20.1.11"
-knx_command_thread = KNXCommandWorker(router_ip, log, command_queue)
-atexit.register(_shutdown)
+connection = knxip.ip.KNXIPTunnel(router_ip)
+knx_command_thread = KNXCommandWorker(connection, log, command_queue)
 
-knx_command_thread.start()
-
-time.sleep(2)
-
-if not knx_command_thread.connected:
-    print("could not connect to knx router at %s" % router_ip)
-    sys.exit(1) 
-else:
-    print("connected to knx router at %s" % router_ip)
+def init():
+    atexit.register(_shutdown)
+    connection.connect()
+    knx_command_thread.start()
 

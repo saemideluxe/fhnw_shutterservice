@@ -1,6 +1,8 @@
 import flask
 import flask_cors
 import threading
+import time
+import logging
 
 # our imports
 import config
@@ -89,5 +91,11 @@ def log():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=50001)
+    knx.init()
+    if not knx.connection.connected:
+        print("could not connect to knx router")
+    else:
+        print("connected to knx router")
+    logging.getLogger().setLevel(logging.NOTSET)
+    app.run(host="0.0.0.0", port=50001, use_reloader=False)
 
