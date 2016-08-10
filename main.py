@@ -99,5 +99,5 @@ if __name__ == "__main__":
         sys.exit(1)
     else:
         print("connected to knx router")
-        app.run(host="0.0.0.0", port=50001, use_reloader=False)
+        app.run(host="0.0.0.0", port=50001, use_reloader=False, threaded=True)
 
