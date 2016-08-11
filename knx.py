@@ -7,6 +7,7 @@ import queue
 import json
 import threading
 import time
+import logging
 
 
 def _shutdown():
@@ -58,9 +59,16 @@ class KNXCommandWorker(threading.Thread):
     def run(self):
         while True:
             now = datetime.datetime.now()
-            if not self.command_queue.empty() and self.command_queue.queue[0][0] <= now and self.connection.connected:
-                next_cmd = self.command_queue.get()
-                self.connection.group_write(_logical_addr_to_bin(next_cmd[1]), next_cmd[2])
+            if self.connection.connected:
+                if not self.command_queue.empty() and self.command_queue.queue[0][0] <= now:
+                    next_cmd = self.command_queue.get()
+                    addr = _logical_addr_to_bin(next_cmd[1])
+                    cemi = knxip.ip.CEMIMessage()
+                    cemi.init_group_write(addr, next_cmd[2])
+                    cemi.ctl2 = 0xf0 # set routing-count to 7 (7 = endless routing)
+                    self.connection.send_tunnelling_request(cemi)
+            else:
+                logging.warning("knx connection not available")
             time.sleep(0.2)
 
     def notify(self, addr, data):

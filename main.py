@@ -92,7 +92,7 @@ def log():
 
 
 if __name__ == "__main__":
-    logging.getLogger().setLevel(logging.NOTSET)
+    logging.getLogger().setLevel(logging.DEBUG)
     knx.init()
     if not knx.connection.connected:
         print("could not connect to knx router, exit program")
