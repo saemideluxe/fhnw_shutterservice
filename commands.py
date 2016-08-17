@@ -2,7 +2,7 @@ import datetime
 import knx
 
 _now = datetime.datetime.now
-_cmd_timeout = datetime.timedelta(microseconds=999 * 1000)
+_cmd_timeout = datetime.timedelta(microseconds=500 * 1000)
 
 _CMD_UP = [0]
 _CMD_DOWN = [1]

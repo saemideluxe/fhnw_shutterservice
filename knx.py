@@ -2,6 +2,7 @@ import knxip
 import knxip.ip
 import atexit
 import sys
+import os
 import datetime
 import queue
 import json
@@ -46,6 +47,7 @@ def nice_log_format(logs):
 
 def queue_command(execution_time, knx_address, data):
     command_queue.put((execution_time, knx_address, data))
+    logging.info("added command to knx-queue: knx_address: %s, data: %s" % (knx_address, data))
 
 
 class KNXCommandWorker(threading.Thread):
@@ -57,19 +59,32 @@ class KNXCommandWorker(threading.Thread):
         self.command_queue = cmd_queue
         
     def run(self):
+        connection.connect()
         while True:
-            now = datetime.datetime.now()
-            if self.connection.connected:
-                if not self.command_queue.empty() and self.command_queue.queue[0][0] <= now:
-                    next_cmd = self.command_queue.get()
-                    addr = _logical_addr_to_bin(next_cmd[1])
-                    cemi = knxip.ip.CEMIMessage()
-                    cemi.init_group_write(addr, next_cmd[2])
-                    cemi.ctl2 = 0xf0 # set routing-count to 7 (7 = endless routing)
-                    self.connection.send_tunnelling_request(cemi)
-            else:
-                logging.warning("knx connection not available")
-            time.sleep(0.2)
+            for i in range(50):
+                now = datetime.datetime.now()
+                if self.connection.connected:
+                    if not self.command_queue.empty() and self.command_queue.queue[0][0] <= now:
+                        next_cmd = self.command_queue.get()
+                        addr = _logical_addr_to_bin(next_cmd[1])
+                        cemi = knxip.ip.CEMIMessage()
+                        cemi.init_group_write(addr, next_cmd[2])
+                        cemi.ctl2 = 0xf0 # set routing-count to 7 (7 = endless routing)
+                        self.connection.send_tunnelling_request(cemi, auto_connect=False)
+                        print("sent knx command: %s" % cemi)
+                else:
+                    # logging.warning("connection lost, try to reconnect")
+                    self.connection.data_server.shutdown()
+                    self.connection.data_server.server_close()
+                    self.connection.data_server = None
+                    self.connection.disconnect()
+                    time.sleep(1)
+                    # self.connection = knxip.ip.KNXIPTunnel(router_ip)
+                    # self.connection.connect()
+                    # time.sleep(1)
+                    os._exit(1)
+                time.sleep(0.2)
+            self.command_queue.put((now, (4,3,153), [0]))
 
     def notify(self, addr, data):
         now = datetime.datetime.now()
@@ -88,6 +103,5 @@ knx_command_thread = KNXCommandWorker(connection, log, command_queue)
 
 def init():
     atexit.register(_shutdown)
-    connection.connect()
     knx_command_thread.start()
 

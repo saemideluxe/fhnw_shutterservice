@@ -4,11 +4,13 @@ import threading
 import time
 import logging
 import sys
+import json
 
 # our imports
 import config
 import commands
 import knx
+import auth
 
 
 app = flask.Flask(__name__)
@@ -54,7 +56,7 @@ def shutter(room, shutter):
     return flask.jsonify(**shutter_cmds)
 
 
-@app.route("/knx/<room>/<shutter>/<command>")
+@app.route("/knx/<room>/<shutter>/<command>", methods=["POST"])
 def command(room, shutter, command):
     if room not in config.supported_rooms:
         return "Room '%s' is not supported" % room, 404
@@ -62,22 +64,37 @@ def command(room, shutter, command):
         return "Shutter '%s' in room '%s' is not supported" % (shutter, room), 404
     if command not in commands.shutter_commands:
         return "Command '%s' not supported" % command, 404
+     
+    _hash = flask.request.data.decode("utf-8")
+
+    if _hash not in auth.AcceptedTokens:
+        return "unknown hash", 401
+
+    if room not in auth.AcceptedTokens[_hash]:
+        return "hash is not authorized for this room", 401
+
+    if shutter == "CommandGroup":
+        if config.supported_rooms[room][shutter] not in config.command_groups:
+            return "unknown CommandGroup", 404
+        shutter_adrs = config.command_groups[config.supported_rooms[room][shutter]]
+    else:
+        shutter_adrs = [config.supported_rooms[room][shutter]]
 
     func, param_name, param_type = commands.shutter_commands[command]
     arg = flask.request.args.get(param_name, None)
-    shutter_adr = config.supported_rooms[room][shutter]
     if arg:
         try:
             arg = param_type(arg)
         except:
             return "argument '%s' is not allowed for this route" % arg, 400
-        result = func(shutter_adr, arg)
+        for shutter in shutter_adrs:
+            result = func(shutter, arg)
     else:
-        result = func(shutter_adr)
+        for shutter in shutter_adrs:
+            result = func(shutter)
 
-    arg_descr = {param_name: arg} if param_name else {}
+    return result[0], 200 if result[1] == False else 400
 
-    return flask.jsonify(room=room, shutter=shutter, command=command, knx_adr=shutter_adr, message=result[0], has_error=result[1], **arg_descr)
 
 
 @app.route("/knx/log")
@@ -94,10 +111,5 @@ def log():
 if __name__ == "__main__":
     logging.getLogger().setLevel(logging.DEBUG)
     knx.init()
-    if not knx.connection.connected:
-        print("could not connect to knx router, exit program")
-        sys.exit(1)
-    else:
-        print("connected to knx router")
-        app.run(host="0.0.0.0", port=50001, use_reloader=False, threaded=True)
+    app.run(host="0.0.0.0", port=50001, use_reloader=False, threaded=True)
 
